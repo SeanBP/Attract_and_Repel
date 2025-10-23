@@ -13,10 +13,10 @@ def generate_random_grid(n, repel_percent, attract_percent):
     for _ in range(n):
         row = []
         for _ in range(n):
-            rand = random.randint(1, 100)
-            if rand <= repel_percent:              # repel (red)
+            rand = random.random() * 100
+            if rand < repel_percent:
                 row.append(-1)
-            elif rand <= repel_percent + attract_percent:  # attract (black)
+            elif rand < repel_percent + attract_percent:
                 row.append(1)
             else:
                 row.append(0)
@@ -32,8 +32,7 @@ def get_angle(grid, x, y, mult):
         ny = (y+dy[i])%len(grid)
         vx += dx[i]*mult*abs(grid[nx][ny])
         vy += dy[i]*mult*abs(grid[nx][ny])
-    if vx==0 and vy==0:
-        return None
+    if vx==0 and vy==0: return None
     ang = math.degrees(math.atan2(-vy, vx))
     return ang+360 if ang<0 else ang
 
@@ -85,14 +84,6 @@ def draw_button(screen,rect,text,active=False):
     label=FONT.render(text,True,WHITE)
     screen.blit(label,label.get_rect(center=rect.center))
 
-def draw_grid(screen,grid):
-    n=len(grid)
-    for y in range(n):
-        for x in range(n):
-            val=grid[y][x]
-            color=WHITE if val==0 else BLACK if val==1 else RED
-            pygame.draw.rect(screen,color,(x*CELL_SIZE,y*CELL_SIZE,CELL_SIZE-1,CELL_SIZE-1))
-
 class InputBox:
     def __init__(self,x,y,w,h,text=''):
         self.rect=pygame.Rect(x,y,w,h)
@@ -112,101 +103,86 @@ class InputBox:
                 self.color=self.color_inactive
             elif event.key==pygame.K_BACKSPACE:
                 self.text=self.text[:-1]
-            elif event.unicode.isdigit():
+            else:
                 self.text+=event.unicode
             self.txt_surface=FONT.render(self.text,True,WHITE)
     def draw(self,screen):
         screen.blit(self.txt_surface,(self.rect.x+5,self.rect.y+5))
         pygame.draw.rect(screen,self.color,self.rect,2)
-    def get_value(self,default):
+    def get_value(self,default,min_val=0,max_val=1000,as_float=False):
         try:
-            val=int(self.text)
-            return max(1,min(val,1000))
+            val = float(self.text) if as_float else int(self.text)
+            val = max(min_val, min(val, max_val))
+            return val
         except:
             return default
 
-# ---------------- Rules Page ---------------- #
+# ---------------- Rules ---------------- #
 
 RULES_TEXT = [
     "Cell States:",
-    "- Empty (0) : no effect",
-    "- Attract (1) : pulls neighbors",
-    "- Repel (-1) : pushes neighbors",
+    "- Empty (0): inactive cell",
+    "- Positive (1): propagates influence in the direction of nearby activity",
+    "- Negative (-1): propagates influence in the opposite direction",
     "",
     "Neighborhood:",
-    "- Each cell interacts with 8 surrounding neighbors",
-    "- Grid wraps around edges",
+    "- Each cell interacts with its 8 surrounding neighbors",
+    "- Grid wraps around at the edges (toroidal)",
     "",
     "Step Update Rules:",
-    "1. Compute Influence Vector",
-    "   - For each cell, sum vectors from its 8 neighbors:",
-    "     * dx, dy = neighbor offsets",
-    "     * neighbor value = 1 (Attract), -1 (Repel), 0 (Empty)",
-    "     * Multiply offsets by neighbor value and cell state",
-    "   - Sum all contributions to get the cell's influence vector",
-    "   - Direction gives dominant influence",
-    "2. Select Target Neighbors",
-    "   - Sector = 1 neighbor; between sectors = 2 neighbors",
-    "3. Apply Influence",
-    "   - Add +1/-1 to selected neighbor(s)",
-    "4. Resolve New States",
-    "   - Cells with positive values become Attract cells",
-    "   - Cells with negative values become Repel cells",
-    "   - Cells with zero value become Empty cells"
+    "1. Compute Direction:",
+    "   - For each nonzero cell, calculate a vector from surrounding cells,",
+    "     weighted by their magnitudes and multiplied by the cell’s own sign.",
+    "2. Determine Angle:",
+    "   - Convert this vector to an angle representing the cell’s direction of influence.",
+    "3. Select Target Neighbors:",
+    "   - Choose neighboring cells within 45° of that angle.",
+    "4. Apply Influence:",
+    "   - Add the cell’s sign (+1 or -1) to each selected neighbor in a new grid.",
+    "5. Resolve New States:",
+    "   - After all updates, set each cell to +1 if the total is positive,",
+    "   1 if negative, or 0 if zero.",
 ]
 
 
 def show_rules():
-    screen_width, screen_height = 600, 730  # increased height
+    screen_width, screen_height = 750, 650
     screen = pygame.display.set_mode((screen_width, screen_height))
     pygame.display.set_caption("Rules")
-    
     line_height = 25
-    margin_top = 20
-    bottom_margin = 60  # reserve space for back button
-    btn_height = 30
-    btn_back = pygame.Rect((screen_width-100)//2, screen_height - bottom_margin + 10, 100, btn_height)
-    
+    bottom_margin = 60
+    btn_back = pygame.Rect((screen_width-100)//2, screen_height - bottom_margin + 10, 100, 30)
     running = True
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                pygame.quit(); sys.exit()
             if event.type == pygame.MOUSEBUTTONDOWN and btn_back.collidepoint(event.pos):
-                running = False
-        
+                running=False
         screen.fill(BG)
-        y = margin_top
+        y=20
         for line in RULES_TEXT:
             if y + line_height < screen_height - bottom_margin:
-                screen.blit(FONT.render(line, True, WHITE), (20, y))
-                y += line_height
+                screen.blit(FONT.render(line, True, WHITE), (20,y))
+                y+=line_height
         draw_button(screen, btn_back, "Back")
         pygame.display.flip()
-
 
 # ---------------- Menu ---------------- #
 
 def menu():
     screen=pygame.display.set_mode((400,450))
     pygame.display.set_caption("Attract and Repel - Menu")
-
-    grid_box=InputBox(200,120,80,30,"30")
-    repel_box=InputBox(200,170,80,30,"2")
+    grid_box=InputBox(200,120,80,30,"100")
+    repel_box=InputBox(200,170,80,30,"1")
     attract_box=InputBox(200,220,80,30,"50")
     boxes=[grid_box,repel_box,attract_box]
-
     start_btn=pygame.Rect(140,280,120,40)
     rules_btn=pygame.Rect(140,330,120,40)
 
     while True:
         screen.fill(BG)
-
-        # Title
-        title_surf = FONT.render("Attract and Repel", True, WHITE)
-        screen.blit(title_surf, title_surf.get_rect(center=(200, 60)))
-
+        screen.blit(FONT.render("Attract and Repel", True, WHITE),(120,60))
         screen.blit(FONT.render("Grid Size:",True,WHITE),(80,125))
         screen.blit(FONT.render("% Attract:",True,WHITE),(80,175))
         screen.blit(FONT.render("% Repel:",True,WHITE),(80,225))
@@ -214,61 +190,69 @@ def menu():
         draw_button(screen,start_btn,"Start")
         draw_button(screen,rules_btn,"Rules")
         pygame.display.flip()
-
         for event in pygame.event.get():
             if event.type==pygame.QUIT:
                 pygame.quit();sys.exit()
             for box in boxes: box.handle_event(event)
             if event.type==pygame.MOUSEBUTTONDOWN:
                 if start_btn.collidepoint(event.pos):
-                    g=grid_box.get_value(30)
-                    r=repel_box.get_value(2)
-                    a=attract_box.get_value(50)
+                    g = int(grid_box.get_value(30,1,380))  # max 380
+                    r = repel_box.get_value(2,0,100,as_float=True)
+                    a = attract_box.get_value(50,0,100,as_float=True)
                     return g,r,a
                 elif rules_btn.collidepoint(event.pos):
                     show_rules()
-                    screen=pygame.display.set_mode((400,450))  # reset menu size
-
+                    screen=pygame.display.set_mode((400,450))
 
 # ---------------- Simulation ---------------- #
 
 def run_simulation():
+    MAX_GRID_AREA = 760
     while True:
-        size,r,a=menu()
-        grid=generate_random_grid(size,r,a)
-        width,height=size*CELL_SIZE,size*CELL_SIZE+60
-        screen=pygame.display.set_mode((width,height))
+        size, r, a = menu()
+        CELL_SIZE = MAX_GRID_AREA // size
+        grid = generate_random_grid(size, r, a)
+        width = size * CELL_SIZE
+        height = width + 60
+        screen = pygame.display.set_mode((width,height))
         pygame.display.set_caption("Attract and Repel")
+        paused = True
+        clock = pygame.time.Clock()
+        btn_play = pygame.Rect(20,height-50,80,30)
+        btn_step = pygame.Rect(120,height-50,80,30)
+        btn_restart = pygame.Rect(220,height-50,100,30)
+        btn_menu = pygame.Rect(340,height-50,100,30)
 
-        paused=True
-        clock=pygame.time.Clock()
-        btn_play=pygame.Rect(20,height-50,80,30)
-        btn_step=pygame.Rect(120,height-50,80,30)
-        btn_restart=pygame.Rect(220,height-50,100,30)
-        btn_menu=pygame.Rect(340,height-50,100,30)
+        def draw_grid(screen, grid):
+            n=len(grid)
+            for y in range(n):
+                for x in range(n):
+                    val = grid[y][x]
+                    color = BLACK if val==0 else WHITE if val==1 else RED
+                    rect_size = max(CELL_SIZE-1,1)
+                    pygame.draw.rect(screen,color,(x*CELL_SIZE,y*CELL_SIZE,rect_size,rect_size))
 
         running=True
         while running:
             for event in pygame.event.get():
                 if event.type==pygame.QUIT:
-                    pygame.quit();sys.exit()
+                    pygame.quit(); sys.exit()
                 if event.type==pygame.MOUSEBUTTONDOWN:
                     if btn_play.collidepoint(event.pos):
-                        paused=not paused
+                        paused = not paused
                     elif btn_step.collidepoint(event.pos) and paused:
-                        grid=next_step(grid)
+                        grid = next_step(grid)
                     elif btn_restart.collidepoint(event.pos):
-                        grid=generate_random_grid(size,r,a)
+                        grid = generate_random_grid(size, r, a)
                     elif btn_menu.collidepoint(event.pos):
                         running=False
                     elif paused:
-                        mx,my=event.pos
-                        if my<size*CELL_SIZE:
-                            cx,cy=mx//CELL_SIZE,my//CELL_SIZE
-                            grid[cy][cx]={0:1,1:-1,-1:0}[grid[cy][cx]]
-
+                        mx,my = event.pos
+                        if my < size*CELL_SIZE:
+                            cx,cy = mx//CELL_SIZE, my//CELL_SIZE
+                            grid[cy][cx] = {0:1,1:-1,-1:0}[grid[cy][cx]]
             if not paused:
-                grid=next_step(grid)
+                grid = next_step(grid)
 
             screen.fill(BG)
             draw_grid(screen,grid)
@@ -279,6 +263,5 @@ def run_simulation():
             pygame.display.flip()
             clock.tick(FPS)
 
-# ---------------- Run ---------------- #
 if __name__=="__main__":
     run_simulation()
