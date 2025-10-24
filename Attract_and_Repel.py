@@ -231,26 +231,10 @@ def menu():
 
 def export_to_conway_clipboard(grid):
     n = len(grid)
-    # Determine bounding box of non-zero cells
-    min_x = n
-    max_x = 0
-    min_y = n
-    max_y = 0
-    for y in range(n):
-        for x in range(n):
-            if grid[y][x] != 0:
-                min_x = min(min_x, x)
-                max_x = max(max_x, x)
-                min_y = min(min_y, y)
-                max_y = max(max_y, y)
-
-    width = max_x - min_x + 1
-    height = max_y - min_y + 1
-
     lines = []
-    for y in range(min_y, max_y+1):
+    for y in range(n):
         row_cells = []
-        for x in range(min_x, max_x+1):
+        for x in range(n):
             cell = grid[y][x]
             row_cells.append("A" if cell == 1 else "B" if cell == -1 else ".")
         # compress runs
@@ -261,16 +245,69 @@ def export_to_conway_clipboard(grid):
             if ch == run_char:
                 run_count += 1
             else:
-                compressed += f"{run_count}{run_char}" if run_count>1 else run_char
+                compressed += f"{run_count}{run_char}" if run_count > 1 else run_char
                 run_char = ch
                 run_count = 1
-        compressed += f"{run_count}{run_char}" if run_count>1 else run_char
+        compressed += f"{run_count}{run_char}" if run_count > 1 else run_char
         lines.append(compressed + "$")
 
     pattern = "\n".join(lines) + "!"
-    full_text = f"x = {width}, y = {height}, rule = Attract_and_Repel\n" + pattern
+    full_text = f"x = {n}, y = {n}, rule = Attract_and_Repel\n" + pattern
     pyperclip.copy(full_text)
-    print("Grid copied to clipboard!")
+    print("Full grid copied to clipboard!")
+
+
+def import_from_clipboard():
+    text = pyperclip.paste().strip()
+    if not text.startswith("x ="):
+        print("Invalid pattern format")
+        return None
+
+    try:
+        header, pattern = text.split("\n", 1)
+    except ValueError:
+        print("Invalid pattern format")
+        return None
+
+    match = re.search(r"x\s*=\s*(\d+)\s*,\s*y\s*=\s*(\d+)", header)
+    if not match:
+        print("Header parse failed")
+        return None
+    x = int(match.group(1))
+    y = int(match.group(2))
+    size = max(x, y)
+    grid = [[0] * size for _ in range(size)]
+
+    lines = pattern.replace("!", "").split("$")
+    for row_idx, line in enumerate(lines):
+        if row_idx >= y or not line:
+            continue
+        col = 0
+        i = 0
+        while i < len(line) and col < x:
+            if line[i].isdigit():
+                num = ""
+                while i < len(line) and line[i].isdigit():
+                    num += line[i]
+                    i += 1
+                if i < len(line):
+                    ch = line[i]
+                    count = int(num)
+                    val = 1 if ch == "A" else -1 if ch == "B" else 0
+                    for _ in range(count):
+                        if col < x:
+                            grid[row_idx][col] = val
+                            col += 1
+            else:
+                ch = line[i]
+                val = 1 if ch == "A" else -1 if ch == "B" else 0
+                grid[row_idx][col] = val
+                col += 1
+            i += 1
+
+    print("Grid imported from clipboard")
+    return grid
+
 
 # ---------------- Import ---------------- #
 
@@ -293,7 +330,10 @@ def import_from_clipboard():
     x = int(match.group(1))
     y = int(match.group(2))
 
-    grid = get_zero_grid(y)
+    size = max(x, y)
+    grid = [[0] * size for _ in range(size)]
+
+
     lines = pattern.replace("!", "").split("$")
     for row_idx, line in enumerate(lines):
         if row_idx >= y:
