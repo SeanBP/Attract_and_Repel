@@ -145,8 +145,8 @@ class InputBox:
 
 RULES_TEXT = [
     "Cell States:",
-    "- Empty (0)    : inactive",
-    "- Positive (1) : attracted to neighbors",
+    "- Empty (0): inactive",
+    "- Positive (1): attracted to neighbors",
     "- Negative (-1): repeled from neighbors",
     "",
     "Step Update Rules:",
@@ -171,8 +171,8 @@ def show_rules():
     screen_width, screen_height = 680, 600
     screen = pygame.display.set_mode((screen_width, screen_height))
     pygame.display.set_caption("Rules")
-    rules_font = pygame.font.SysFont("arial", 16)  # smaller font
-    line_height = 20
+    rules_font = pygame.font.SysFont("arial", 20)  # smaller font
+    line_height = 25
     bottom_margin = 60
     btn_back = pygame.Rect((screen_width-100)//2, screen_height - bottom_margin + 10, 100, 30)
     running = True
@@ -196,9 +196,9 @@ def show_rules():
 def menu():
     screen = pygame.display.set_mode((400,450))
     pygame.display.set_caption("Attract and Repel - Menu")
-    grid_box = InputBox(200,120,80,30,"100")
-    repel_box = InputBox(200,170,80,30,"1")
-    attract_box = InputBox(200,220,80,30,"50")
+    grid_box = InputBox(200,120,80,30,"300")
+    repel_box = InputBox(200,170,80,30,"0.05")
+    attract_box = InputBox(200,220,80,30,"20")
     boxes = [grid_box, repel_box, attract_box]
     start_btn = pygame.Rect(140,280,120,40)
     rules_btn = pygame.Rect(140,330,120,40)
@@ -329,25 +329,34 @@ def import_from_clipboard():
 # ---------------- Simulation ---------------- #
 
 def run_simulation():
-    MAX_GRID_AREA = 760
+    FIXED_WIDTH, FIXED_HEIGHT = 760, 760  # grid area
+    BUTTON_HEIGHT = 60
+
     while True:
         size, r, a = menu()
-        CELL_SIZE = MAX_GRID_AREA // size
-        grid = generate_random_grid(size, r, a)
-        width = size * CELL_SIZE
-        height = width + 60
-        screen = pygame.display.set_mode((width, height))
+
+        # compute exact float cell size to fill the grid area
+        CELL_SIZE = FIXED_WIDTH / size
+        grid_display_size = CELL_SIZE * size
+        screen = pygame.display.set_mode((FIXED_WIDTH, FIXED_HEIGHT + BUTTON_HEIGHT))
         pygame.display.set_caption("Attract and Repel")
+        grid = generate_random_grid(size, r, a)
         paused = True
         clock = pygame.time.Clock()
 
-        # initial buttons
-        btn_play = pygame.Rect(20, height - 50, 80, 30)
-        btn_step = pygame.Rect(120, height - 50, 80, 30)
-        btn_restart = pygame.Rect(220, height - 50, 100, 30)
-        btn_menu = pygame.Rect(340, height - 50, 100, 30)
-        btn_export = pygame.Rect(460, height - 50, 100, 30)
-        btn_import = pygame.Rect(580, height - 50, 100, 30)
+        # buttons
+        BUTTON_HEIGHT = 60
+        BTN_H = 30  # actual button height
+
+        btn_y = FIXED_HEIGHT + (BUTTON_HEIGHT - BTN_H) // 2
+
+        btn_play = pygame.Rect(20, btn_y, 80, BTN_H)
+        btn_step = pygame.Rect(120, btn_y, 80, BTN_H)
+        btn_restart = pygame.Rect(220, btn_y, 100, BTN_H)
+        btn_menu = pygame.Rect(340, btn_y, 100, BTN_H)
+        btn_export = pygame.Rect(460, btn_y, 100, BTN_H)
+        btn_import = pygame.Rect(580, btn_y, 100, BTN_H)
+
 
         def draw_grid(screen, grid):
             n = len(grid)
@@ -355,54 +364,40 @@ def run_simulation():
                 for x in range(n):
                     val = grid[y][x]
                     color = BLACK if val == 0 else WHITE if val == 1 else RED
-                    rect_size = max(CELL_SIZE - 1, 1)
-                    pygame.draw.rect(screen, color, (x * CELL_SIZE, y * CELL_SIZE, rect_size, rect_size))
+                    rect_size = max(int(CELL_SIZE), 1)
+                    pygame.draw.rect(screen, color,
+                                     (int(x * CELL_SIZE), int(y * CELL_SIZE), rect_size, rect_size))
 
         running = True
         while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit(); sys.exit()
-
                 if event.type == pygame.MOUSEBUTTONDOWN:
-                    if btn_play.collidepoint(event.pos):
-                        paused = not paused
+                    mx, my = event.pos
+                    # grid click
+                    if my < FIXED_HEIGHT and paused:
+                        cx, cy = int(mx / CELL_SIZE), int(my / CELL_SIZE)
+                        if 0 <= cx < size and 0 <= cy < size:
+                            grid[cy][cx] = {0: 1, 1: -1, -1: 0}[grid[cy][cx]]
 
+                    # buttons
+                    elif btn_play.collidepoint(event.pos):
+                        paused = not paused
                     elif btn_step.collidepoint(event.pos) and paused:
                         grid = next_step(grid)
-
                     elif btn_restart.collidepoint(event.pos):
                         grid = generate_random_grid(size, r, a)
-
                     elif btn_menu.collidepoint(event.pos):
                         running = False
-
                     elif btn_export.collidepoint(event.pos) and paused:
                         export_to_conway_clipboard(grid)
-
                     elif btn_import.collidepoint(event.pos) and paused:
                         imported = import_from_clipboard()
                         if imported:
                             grid = imported
                             size = len(grid)
-                            CELL_SIZE = MAX_GRID_AREA // size
-                            width = size * CELL_SIZE
-                            height = width + 60
-                            screen = pygame.display.set_mode((width, height))
-                            pygame.display.set_caption("Attract and Repel")
-                            # recreate buttons to match new layout
-                            btn_play = pygame.Rect(20, height - 50, 80, 30)
-                            btn_step = pygame.Rect(120, height - 50, 80, 30)
-                            btn_restart = pygame.Rect(220, height - 50, 100, 30)
-                            btn_menu = pygame.Rect(340, height - 50, 100, 30)
-                            btn_export = pygame.Rect(460, height - 50, 100, 30)
-                            btn_import = pygame.Rect(580, height - 50, 100, 30)
-
-                    elif paused:
-                        mx, my = event.pos
-                        if my < size * CELL_SIZE:
-                            cx, cy = mx // CELL_SIZE, my // CELL_SIZE
-                            grid[cy][cx] = {0: 1, 1: -1, -1: 0}[grid[cy][cx]]
+                            CELL_SIZE = FIXED_WIDTH / size
 
             if not paused:
                 grid = next_step(grid)
@@ -417,6 +412,7 @@ def run_simulation():
             draw_button(screen, btn_import, "Import", active=True)
             pygame.display.flip()
             clock.tick(FPS)
+
 
 if __name__=="__main__":
     run_simulation()
