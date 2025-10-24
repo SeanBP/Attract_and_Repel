@@ -3,7 +3,7 @@ import sys
 import random
 import math
 import re
-import pyperclip  # pip install pyperclip
+import pyperclip
 
 # ---------------- Cellular Automata Core ---------------- #
 
