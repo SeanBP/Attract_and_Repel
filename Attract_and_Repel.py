@@ -2,6 +2,7 @@ import pygame
 import sys
 import random
 import math
+import re
 import pyperclip  # pip install pyperclip
 
 # ---------------- Cellular Automata Core ---------------- #
@@ -103,7 +104,7 @@ BLUE = (0,120,255)
 BG = (30,30,30)
 
 def draw_button(screen, rect, text, active=False):
-    pygame.draw.rect(screen, BLUE, rect, border_radius=8)
+    pygame.draw.rect(screen, BLUE, rect, border_radius=8)  # always blue
     label = FONT.render(text, True, WHITE)
     screen.blit(label, label.get_rect(center=rect.center))
 
@@ -166,18 +167,14 @@ RULES_TEXT = [
     "   - Set cell to 0 if total == 0"
 ]
 
-
 def show_rules():
     screen_width, screen_height = 680, 600
     screen = pygame.display.set_mode((screen_width, screen_height))
     pygame.display.set_caption("Rules")
-    
-    # Smaller font for rules
-    rules_font = pygame.font.SysFont("arial", 20)  # smaller than main FONT
-    line_height = 25  
+    rules_font = pygame.font.SysFont("arial", 16)  # smaller font
+    line_height = 20
     bottom_margin = 60
     btn_back = pygame.Rect((screen_width-100)//2, screen_height - bottom_margin + 10, 100, 30)
-    
     running = True
     while running:
         for event in pygame.event.get():
@@ -185,17 +182,14 @@ def show_rules():
                 pygame.quit(); sys.exit()
             if event.type == pygame.MOUSEBUTTONDOWN and btn_back.collidepoint(event.pos):
                 running=False
-                
         screen.fill(BG)
         y = 20
         for line in RULES_TEXT:
             if y + line_height < screen_height - bottom_margin:
-                screen.blit(FONT.render(line, True, WHITE), (20, y))
+                screen.blit(rules_font.render(line, True, WHITE), (20, y))
                 y += line_height
-                
         draw_button(screen, btn_back, "Back")
         pygame.display.flip()
-
 
 # ---------------- Menu ---------------- #
 
@@ -255,38 +249,82 @@ def export_to_conway_clipboard(grid):
 
     lines = []
     for y in range(min_y, max_y+1):
-        row = ""
-        run_char = None
-        run_count = 0
-        row_cells = 0
+        row_cells = []
         for x in range(min_x, max_x+1):
             cell = grid[y][x]
-            char = "A" if cell == 1 else "B" if cell == -1 else "."
-            if char == run_char:
+            row_cells.append("A" if cell == 1 else "B" if cell == -1 else ".")
+        # compress runs
+        compressed = ""
+        run_char = row_cells[0]
+        run_count = 1
+        for ch in row_cells[1:]:
+            if ch == run_char:
                 run_count += 1
             else:
-                if run_char is not None:
-                    if run_char == ".":
-                        row += f"{run_count}." if run_count > 1 else "."
-                    else:
-                        row += f"{run_count}{run_char}" if run_count > 1 else run_char
-                run_char = char
+                compressed += f"{run_count}{run_char}" if run_count>1 else run_char
+                run_char = ch
                 run_count = 1
-            row_cells += 1
-        # Append last run for row
-        if run_char is not None:
-            if run_char == ".":
-                row += f"{run_count}." if run_count > 1 else "."
-            else:
-                row += f"{run_count}{run_char}" if run_count > 1 else run_char
-        # End row with $
-        row += "$"
-        lines.append(row)
+        compressed += f"{run_count}{run_char}" if run_count>1 else run_char
+        lines.append(compressed + "$")
 
     pattern = "\n".join(lines) + "!"
     full_text = f"x = {width}, y = {height}, rule = Attract_and_Repel\n" + pattern
     pyperclip.copy(full_text)
     print("Grid copied to clipboard!")
+
+# ---------------- Import ---------------- #
+
+def import_from_clipboard():
+    text = pyperclip.paste().strip()
+    if not text.startswith("x ="):
+        print("Invalid pattern format")
+        return None
+
+    try:
+        header, pattern = text.split("\n", 1)
+    except ValueError:
+        print("Invalid pattern format")
+        return None
+
+    match = re.search(r"x\s*=\s*(\d+)\s*,\s*y\s*=\s*(\d+)", header)
+    if not match:
+        print("Header parse failed")
+        return None
+    x = int(match.group(1))
+    y = int(match.group(2))
+
+    grid = get_zero_grid(y)
+    lines = pattern.replace("!", "").split("$")
+    for row_idx, line in enumerate(lines):
+        if row_idx >= y:
+            break
+        if line == "":
+            # empty row
+            continue
+        col = 0
+        i = 0
+        while i < len(line) and col < x:
+            if line[i].isdigit():
+                num = ""
+                while i < len(line) and line[i].isdigit():
+                    num += line[i]
+                    i += 1
+                if i < len(line):
+                    cell_char = line[i]
+                    count = int(num)
+                    val = 1 if cell_char == "A" else -1 if cell_char == "B" else 0
+                    for _ in range(count):
+                        if col < x:
+                            grid[row_idx][col] = val
+                            col += 1
+            else:
+                ch = line[i]
+                val = 1 if ch == "A" else -1 if ch == "B" else 0
+                grid[row_idx][col] = val
+                col += 1
+            i += 1
+    print("Grid imported from clipboard")
+    return grid
 
 # ---------------- Simulation ---------------- #
 
@@ -298,56 +336,85 @@ def run_simulation():
         grid = generate_random_grid(size, r, a)
         width = size * CELL_SIZE
         height = width + 60
-        screen = pygame.display.set_mode((width,height))
+        screen = pygame.display.set_mode((width, height))
         pygame.display.set_caption("Attract and Repel")
         paused = True
         clock = pygame.time.Clock()
-        btn_play = pygame.Rect(20,height-50,80,30)
-        btn_step = pygame.Rect(120,height-50,80,30)
-        btn_restart = pygame.Rect(220,height-50,100,30)
-        btn_menu = pygame.Rect(340,height-50,100,30)
-        btn_export = pygame.Rect(460,height-50,100,30)
+
+        # initial buttons
+        btn_play = pygame.Rect(20, height - 50, 80, 30)
+        btn_step = pygame.Rect(120, height - 50, 80, 30)
+        btn_restart = pygame.Rect(220, height - 50, 100, 30)
+        btn_menu = pygame.Rect(340, height - 50, 100, 30)
+        btn_export = pygame.Rect(460, height - 50, 100, 30)
+        btn_import = pygame.Rect(580, height - 50, 100, 30)
 
         def draw_grid(screen, grid):
-            n=len(grid)
+            n = len(grid)
             for y in range(n):
                 for x in range(n):
                     val = grid[y][x]
-                    color = BLACK if val==0 else WHITE if val==1 else RED
-                    rect_size = max(CELL_SIZE-1,1)
-                    pygame.draw.rect(screen,color,(x*CELL_SIZE,y*CELL_SIZE,rect_size,rect_size))
+                    color = BLACK if val == 0 else WHITE if val == 1 else RED
+                    rect_size = max(CELL_SIZE - 1, 1)
+                    pygame.draw.rect(screen, color, (x * CELL_SIZE, y * CELL_SIZE, rect_size, rect_size))
 
-        running=True
+        running = True
         while running:
             for event in pygame.event.get():
-                if event.type==pygame.QUIT:
+                if event.type == pygame.QUIT:
                     pygame.quit(); sys.exit()
-                if event.type==pygame.MOUSEBUTTONDOWN:
+
+                if event.type == pygame.MOUSEBUTTONDOWN:
                     if btn_play.collidepoint(event.pos):
                         paused = not paused
+
                     elif btn_step.collidepoint(event.pos) and paused:
                         grid = next_step(grid)
+
                     elif btn_restart.collidepoint(event.pos):
                         grid = generate_random_grid(size, r, a)
+
                     elif btn_menu.collidepoint(event.pos):
-                        running=False
+                        running = False
+
                     elif btn_export.collidepoint(event.pos) and paused:
                         export_to_conway_clipboard(grid)
+
+                    elif btn_import.collidepoint(event.pos) and paused:
+                        imported = import_from_clipboard()
+                        if imported:
+                            grid = imported
+                            size = len(grid)
+                            CELL_SIZE = MAX_GRID_AREA // size
+                            width = size * CELL_SIZE
+                            height = width + 60
+                            screen = pygame.display.set_mode((width, height))
+                            pygame.display.set_caption("Attract and Repel")
+                            # recreate buttons to match new layout
+                            btn_play = pygame.Rect(20, height - 50, 80, 30)
+                            btn_step = pygame.Rect(120, height - 50, 80, 30)
+                            btn_restart = pygame.Rect(220, height - 50, 100, 30)
+                            btn_menu = pygame.Rect(340, height - 50, 100, 30)
+                            btn_export = pygame.Rect(460, height - 50, 100, 30)
+                            btn_import = pygame.Rect(580, height - 50, 100, 30)
+
                     elif paused:
-                        mx,my = event.pos
-                        if my < size*CELL_SIZE:
-                            cx,cy = mx//CELL_SIZE, my//CELL_SIZE
-                            grid[cy][cx] = {0:1,1:-1,-1:0}[grid[cy][cx]]
+                        mx, my = event.pos
+                        if my < size * CELL_SIZE:
+                            cx, cy = mx // CELL_SIZE, my // CELL_SIZE
+                            grid[cy][cx] = {0: 1, 1: -1, -1: 0}[grid[cy][cx]]
+
             if not paused:
                 grid = next_step(grid)
 
             screen.fill(BG)
-            draw_grid(screen,grid)
-            draw_button(screen,btn_play,"Pause" if not paused else "Play",active=True)
-            draw_button(screen,btn_step,"Step")
-            draw_button(screen,btn_restart,"Restart")
-            draw_button(screen,btn_menu,"Menu")
-            draw_button(screen,btn_export,"Export",active=True)
+            draw_grid(screen, grid)
+            draw_button(screen, btn_play, "Pause" if not paused else "Play", active=True)
+            draw_button(screen, btn_step, "Step")
+            draw_button(screen, btn_restart, "Restart")
+            draw_button(screen, btn_menu, "Menu")
+            draw_button(screen, btn_export, "Export")
+            draw_button(screen, btn_import, "Import", active=True)
             pygame.display.flip()
             clock.tick(FPS)
 
