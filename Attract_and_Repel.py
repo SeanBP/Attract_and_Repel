@@ -44,8 +44,7 @@ def get_angle_vectors(grid, x, y, mult):
         vx_diag += dx_diag[i] * mult * abs(grid[nx][ny])
         vy_diag += dy_diag[i] * mult * abs(grid[nx][ny])
 
-    # Cancel if vectors are back-to-back
-    if vx_card != 0 or vy_card != 0:
+    if (vx_card or vy_card) and (vx_diag or vy_diag):
         angle_card = math.degrees(math.atan2(vy_card, vx_card))
         angle_diag = math.degrees(math.atan2(vy_diag, vx_diag))
         diff = (angle_card - angle_diag + 180) % 360 - 180
